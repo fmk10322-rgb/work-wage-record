@@ -1,13 +1,19 @@
 <!doctype html><html lang="ja"><meta charset="utf-8"><title>計算ロジック テスト</title><body><h1>計算ロジック テスト</h1><pre id="output"></pre><script type="module">
-import { calculateWorkMinutes, calculateWage, formatDuration, getMonthlySummary, removeRecord, upsertRecord } from './logic.js';
+import { businessDaysInMonth, calculateWorkMinutes, calculateWage, formatDuration, getAttendanceAllowance, getMonthlySummary, removeRecord, upsertRecord } from './logic.js';
 const cases = []; const test = (name, actual, expected) => cases.push({ name, passed: JSON.stringify(actual) === JSON.stringify(expected), actual, expected });
 test('3時間-60分 = 2時間', calculateWorkMinutes('13:00','16:00',60), { valid:true, minutes:120 });
 test('30分単位の工賃', calculateWage(150,200), 500);
 test('45分の表示', formatDuration(45), '45分');
 test('終了が開始より前ならエラー', calculateWorkMinutes('16:00','13:00',0).valid, false);
 test('休憩が作業時間を超えるとエラー', calculateWorkMinutes('13:00','14:00',61).valid, false);
-const summary = getMonthlySummary([{date:'2026-09-01',type:'通所',workMinutes:120},{date:'2026-09-01',type:'在宅',workMinutes:30},{date:'2026-09-02',type:'在宅',workMinutes:60}], {hourlyWage:200,attendanceAllowance:5000}, '2026-09');
-test('月間集計（日数・形態・時間・工賃）', {days:summary.workDays, attendance:summary.attendanceDays, remote:summary.remoteDays, minutes:summary.workMinutes, hourly:summary.hourlyWageTotal, total:summary.totalEstimatedWage}, {days:2, attendance:1, remote:2, minutes:210, hourly:700, total:5700});
+const summary = getMonthlySummary([{date:'2026-09-01',type:'通所',workMinutes:120},{date:'2026-09-01',type:'在宅',workMinutes:30},{date:'2026-09-02',type:'在宅',workMinutes:60}], {hourlyWage:200,attendanceAllowance:5000}, '2026-09', '2026-09-02');
+test('月間集計（日数・形態・時間・工賃）', {days:summary.workDays, attendance:summary.attendanceDays, remote:summary.remoteDays, minutes:summary.workMinutes, hourly:summary.hourlyWageTotal, total:summary.totalEstimatedWage}, {days:2, attendance:1, remote:2, minutes:210, hourly:700, total:null});
+test('土日だけを皆勤対象から除く', businessDaysInMonth('2026-09').includes('2026-09-05'), false);
+test('平日の祝日も皆勤対象に含める', businessDaysInMonth('2026-09').includes('2026-09-21'), true);
+test('月途中は皆勤手当が未確定', getAttendanceAllowance([{date:'2026-09-01'}], {attendanceAllowance:5000}, '2026-09', '2026-09-01').status, 'pending');
+test('過去の平日に未出席なら皆勤手当は0円', getAttendanceAllowance([{date:'2026-09-01'}], {attendanceAllowance:5000}, '2026-09', '2026-09-03').amount, 0);
+const septemberBusinessDays = businessDaysInMonth('2026-09').map((date) => ({ date }));
+test('最終営業日まで全出席なら皆勤手当を加算', getAttendanceAllowance(septemberBusinessDays, {attendanceAllowance:5000}, '2026-09', '2026-09-30'), {status:'earned', amount:5000, businessDays:businessDaysInMonth('2026-09'), missedDays:[], lastBusinessDay:'2026-09-30'});
 const first = { id:'first', date:'2026-09-01', workMinutes:60 }; const changed = { ...first, workMinutes:90 };
 test('編集は同じIDの記録を更新する', upsertRecord([first], changed), [changed]);
 test('削除は指定IDだけを取り除く', removeRecord([first, {id:'second'}], 'first'), [{id:'second'}]);
