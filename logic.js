@@ -35,19 +35,46 @@ export function formatYen(amount) { return `${Math.round(amount).toLocaleString(
 
 export function monthKey(dateString) { return (dateString || '').slice(0, 7); }
 
-export function getMonthlySummary(records, settings, selectedMonth) {
+function dateKey(year, month, day) { return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`; }
+
+/** 土日だけを休業日とし、祝日は平日として営業日に含める。 */
+export function businessDaysInMonth(selectedMonth) {
+  const [year, month] = selectedMonth.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const days = [];
+  for (let day = 1; day <= lastDay; day += 1) {
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    if (weekday !== 0 && weekday !== 6) days.push(dateKey(year, month, day));
+  }
+  return days;
+}
+
+export function getAttendanceAllowance(records, settings, selectedMonth, todayKey) {
+  const businessDays = businessDaysInMonth(selectedMonth);
+  const attendedDays = new Set(records.filter((record) => monthKey(record.date) === selectedMonth).map((record) => record.date));
+  const lastBusinessDay = businessDays[businessDays.length - 1];
+  const monthIsComplete = todayKey >= lastBusinessDay;
+  // 月途中の当日はまだ出席できるため、欠席判定は翌日以降に行う。
+  const daysThatMustBeAttended = monthIsComplete ? businessDays : businessDays.filter((day) => day < todayKey);
+  const missedDays = daysThatMustBeAttended.filter((day) => !attendedDays.has(day));
+  if (missedDays.length > 0) return { status: 'lost', amount: 0, businessDays, missedDays, lastBusinessDay };
+  if (!monthIsComplete) return { status: 'pending', amount: 0, businessDays, missedDays: [], lastBusinessDay };
+  return { status: 'earned', amount: settings.attendanceAllowance, businessDays, missedDays: [], lastBusinessDay };
+}
+
+export function getMonthlySummary(records, settings, selectedMonth, todayKey) {
   const recordsInMonth = records.filter((record) => monthKey(record.date) === selectedMonth);
   const days = new Set(recordsInMonth.map((record) => record.date));
   const workMinutes = recordsInMonth.reduce((total, record) => total + record.workMinutes, 0);
   const hourlyWageTotal = recordsInMonth.reduce((total, record) => total + calculateWage(record.workMinutes, settings.hourlyWage), 0);
-  // 皆勤条件を追加する際は、ここで allowanceEligible を判定できるようにしている。
-  const attendanceAllowance = settings.attendanceAllowance;
+  const allowance = getAttendanceAllowance(recordsInMonth, settings, selectedMonth, todayKey);
   return {
     records: recordsInMonth, workDays: days.size,
     attendanceDays: new Set(recordsInMonth.filter((r) => r.type === '通所').map((r) => r.date)).size,
     remoteDays: new Set(recordsInMonth.filter((r) => r.type === '在宅').map((r) => r.date)).size,
-    workMinutes, hourlyWageTotal, attendanceAllowance,
-    totalEstimatedWage: hourlyWageTotal + attendanceAllowance,
+    workMinutes, hourlyWageTotal, attendanceAllowance: allowance.amount,
+    attendanceAllowanceStatus: allowance.status,
+    totalEstimatedWage: allowance.status === 'pending' ? null : hourlyWageTotal + allowance.amount,
   };
 }
 
