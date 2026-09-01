@@ -32,7 +32,10 @@ function renderToday() {
   $('today-summary').innerHTML = todayRecords.length ? `<div><span>今日の作業時間</span><strong>${formatDuration(minutes)}</strong></div><div><span>今日の工賃</span><strong>${formatYen(todayRecords.reduce((t, r) => t + calculateWage(r.workMinutes, settings.hourlyWage), 0))}</strong></div>` : '<p>まだ作業記録がありません</p>';
 }
 function renderMonthSummary() {
-  const s = getMonthlySummary(records, settings, selectedMonth); const values = [['今月の作業時間', formatDuration(s.workMinutes)], ['今月の作業日数', `${s.workDays}日`], ['時間工賃の合計', formatYen(s.hourlyWageTotal)], ['皆勤手当', formatYen(s.attendanceAllowance)], ['今月の合計見込み', formatYen(s.totalEstimatedWage)]];
+  const s = getMonthlySummary(records, settings, selectedMonth, localDateString());
+  const allowanceLabel = s.attendanceAllowanceStatus === 'pending' ? '未確定' : formatYen(s.attendanceAllowance);
+  const totalLabel = s.totalEstimatedWage === null ? `未確定（時間工賃 ${formatYen(s.hourlyWageTotal)}）` : formatYen(s.totalEstimatedWage);
+  const values = [['今月の作業時間', formatDuration(s.workMinutes)], ['今月の作業日数', `${s.workDays}日`], ['時間工賃の合計', formatYen(s.hourlyWageTotal)], ['皆勤手当', allowanceLabel], ['今月の合計見込み', totalLabel]];
   $('month-summary').innerHTML = values.map(([label, value], i) => `<div class="stat-card ${i === 4 ? 'total-stat' : ''}"><span>${label}</span><strong>${value}</strong></div>`).join('');
 }
 function renderRecords() {
